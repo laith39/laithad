@@ -17,6 +17,135 @@ jobs:
           channel: stable
       - name: Generate Android project
         run: flutter create --platforms=android --project-name adapp --org com.example .
+      - name: Write app files
+        run: |
+          rm -rf test
+          cat > pubspec.yaml <<'EOF'
+          name: adapp
+          description: Ads app
+          publish_to: none
+          version: 1.0.0+1
+          environment:
+            sdk: ">=3.0.0 <4.0.0"
+          dependencies:
+            flutter:
+              sdk: flutter
+            google_mobile_ads: ^5.1.0
+          flutter:
+            uses-material-design: true
+          EOF
+          cat > lib/main.dart <<'EOF'
+          import 'package:flutter/material.dart';
+          import 'package:google_mobile_ads/google_mobile_ads.dart';
+
+          const String realInterstitialId = 'ca-app-pub-2390224820812114/4951386763';
+          const String testInterstitialId = 'ca-app-pub-3940256099942544/1033173712';
+
+          // ضع معرّف إعلانات هاتفك هنا بعد تسجيله في AdMob
+          const List<String> testDeviceIds = [];
+
+          final bool safeMode = testDeviceIds.isEmpty;
+          final String interstitialId = safeMode ? testInterstitialId : realInterstitialId;
+
+          void main() async {
+            WidgetsFlutterBinding.ensureInitialized();
+            await MobileAds.instance.updateRequestConfiguration(
+                RequestConfiguration(testDeviceIds: testDeviceIds));
+            await MobileAds.instance.initialize();
+            runApp(const MaterialApp(home: HomePage()));
+          }
+
+          class HomePage extends StatefulWidget {
+            const HomePage({super.key});
+            @override
+            State<HomePage> createState() => _HomePageState();
+          }
+
+          class _HomePageState extends State<HomePage> {
+            InterstitialAd? _ad;
+            bool _loading = false;
+            int _shown = 0;
+
+            @override
+            void initState() {
+              super.initState();
+              _loadAd();
+            }
+
+            void _loadAd() {
+              setState(() => _loading = true);
+              InterstitialAd.load(
+                adUnitId: interstitialId,
+                request: const AdRequest(),
+                adLoadCallback: InterstitialAdLoadCallback(
+                  onAdLoaded: (ad) {
+                    _ad = ad;
+                    if (mounted) setState(() => _loading = false);
+                  },
+                  onAdFailedToLoad: (e) {
+                    _ad = null;
+                    if (mounted) setState(() => _loading = false);
+                  },
+                ),
+              );
+            }
+
+            void _showAd() {
+              final ad = _ad;
+              if (ad == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('الإعلان قيد التحميل، حاول بعد قليل')));
+                if (!_loading) _loadAd();
+                return;
+              }
+              ad.fullScreenContentCallback = FullScreenContentCallback(
+                onAdDismissedFullScreenContent: (a) {
+                  a.dispose();
+                  _loadAd();
+                },
+                onAdFailedToShowFullScreenContent: (a, e) {
+                  a.dispose();
+                  _loadAd();
+                },
+              );
+              _ad = null;
+              ad.show();
+              setState(() => _shown++);
+            }
+
+            @override
+            void dispose() {
+              _ad?.dispose();
+              super.dispose();
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                body: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ElevatedButton(
+                        onPressed: _showAd,
+                        style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 40, vertical: 20)),
+                        child: const Text('اعرض إعلان', style: TextStyle(fontSize: 22)),
+                      ),
+                      const SizedBox(height: 16),
+                      Text('عدد الإعلانات: $_shown'),
+                      const SizedBox(height: 8),
+                      Text(safeMode
+                          ? 'الوضع: وحدة تجريبية'
+                          : 'الوضع: وحدتك الحقيقية (جهاز اختبار)'),
+                    ],
+                  ),
+                ),
+              );
+            }
+          }
+          EOF
       - name: Patch manifest and minSdk
         run: |
           M=android/app/src/main/AndroidManifest.xml
