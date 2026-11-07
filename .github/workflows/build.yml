@@ -14,6 +14,7 @@ jobs:
           java-version: 17
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: 3.32.8
           channel: stable
       - name: Generate Android project
         run: flutter create --platforms=android --project-name adapp --org com.example .
